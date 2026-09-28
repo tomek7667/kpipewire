@@ -18,7 +18,8 @@ struct PipeWireAudioSourceStreamPrivate {
     pw_stream *pwStream = nullptr;
     spa_hook streamListener{};
 
-    PipeWireAudioSourceStream::Source source = PipeWireAudioSourceStream::Source::DefaultOutputMonitor;
+    PipeWireAudioSourceStream::Source source = PipeWireAudioSourceStream::Source::OutputMonitor;
+    QString targetNodeName;
 
     QAtomicInt m_stopped = false;
     pw_stream_state m_state = PW_STREAM_STATE_UNCONNECTED;
@@ -76,11 +77,12 @@ QString PipeWireAudioSourceStream::error() const
     return d->m_error;
 }
 
-PipeWireAudioSourceStream::PipeWireAudioSourceStream(Source source, QObject *parent)
+PipeWireAudioSourceStream::PipeWireAudioSourceStream(Source source, const QString &targetNodeName, QObject *parent)
     : QObject(parent)
     , d(new PipeWireAudioSourceStreamPrivate)
 {
     d->source = source;
+    d->targetNodeName = targetNodeName;
 }
 
 PipeWireAudioSourceStream::~PipeWireAudioSourceStream()
@@ -104,13 +106,29 @@ bool PipeWireAudioSourceStream::createStream()
     connect(d->pwCore.data(), &PipeWireCore::pipewireFailed, this, &PipeWireAudioSourceStream::coreFailed);
 
     if (objectName().isEmpty()) {
-        setObjectName(d->source == Source::DefaultOutputMonitor ? QStringLiteral("plasma-screencast-audio-monitor")
-                                                                : QStringLiteral("plasma-screencast-audio-input"));
+        setObjectName(d->source == Source::OutputMonitor ? QStringLiteral("plasma-screencast-audio-monitor")
+                                                         : QStringLiteral("plasma-screencast-audio-input"));
     }
 
     pw_properties *properties = pw_properties_new(PW_KEY_MEDIA_TYPE, "Audio", PW_KEY_MEDIA_CATEGORY, "Capture", PW_KEY_MEDIA_ROLE, "Screen", nullptr);
-    if (d->source == Source::DefaultOutputMonitor) {
+    if (d->source == Source::OutputMonitor) {
         pw_properties_set(properties, PW_KEY_STREAM_CAPTURE_SINK, "true");
+    }
+    if (!d->targetNodeName.isEmpty()) {
+        pw_properties_set(properties, PW_KEY_TARGET_OBJECT, d->targetNodeName.toUtf8().constData());
+        // Never let the session manager substitute the default device when the
+        // requested one is missing or goes away, e.g. picking up the laptop
+        // microphone when the chosen headset is not plugged in. With linger the
+        // stream waits for the device to (re)appear instead of being destroyed,
+        // and the pad timer fills the gap with silence in the meantime.
+        // Without dont-move, WirePlumber switches a stream that got linked to
+        // the device that is also the default over to following the default,
+        // which together with dont-fallback means it is never relinked after
+        // the device went away and came back. These are all WirePlumber
+        // linking policy properties.
+        pw_properties_set(properties, "node.dont-fallback", "true");
+        pw_properties_set(properties, "node.linger", "true");
+        pw_properties_set(properties, "node.dont-move", "true");
     }
 
     d->pwStream = pw_stream_new(**d->pwCore, objectName().toUtf8().constData(), properties);
@@ -141,7 +159,8 @@ bool PipeWireAudioSourceStream::createStream()
     // Deliberately no PW_STREAM_FLAG_DONT_RECONNECT: when the current default
     // device disappears (e.g. a USB headset is unplugged) we want PipeWire to
     // reconnect the stream to the new default rather than leaving it
-    // UNCONNECTED and the track silent for the rest of the recording. The
+    // UNCONNECTED and the track silent for the rest of the recording. A stream
+    // with an explicit target is likewise relinked once its device returns. The
     // resulting gap is filled with silence by the pad timer and the
     // gap-correction in PipeWireProduce::processAudioFrame(), so A/V stays in
     // sync. Real daemon death is still handled, via PipeWireCore's
@@ -182,7 +201,7 @@ void PipeWireAudioSourceStream::handleFrame(struct pw_buffer *buffer)
         // system audio earlier than the video by up to hundreds of ms (e.g. on
         // Bluetooth). The monitored content is already present at time.now, so
         // only correct for capture latency on actual input devices.
-        const int64_t delay = d->source == Source::DefaultInput ? time.delay * SPA_NSEC_PER_SEC * time.rate.num / time.rate.denom : 0;
+        const int64_t delay = d->source == Source::Input ? time.delay * SPA_NSEC_PER_SEC * time.rate.num / time.rate.denom : 0;
         frame.presentationTimestamp = std::chrono::nanoseconds(time.now - delay);
     } else {
         frame.presentationTimestamp = std::chrono::steady_clock::now().time_since_epoch();

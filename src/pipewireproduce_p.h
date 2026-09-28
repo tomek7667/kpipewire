@@ -34,6 +34,7 @@ extern "C" {
 #include <thread>
 #include <vector>
 
+#include "pipewireaudiosourcestream_p.h"
 #include "pipewirebaseencodedstream.h"
 #include "pipewiresourcestream.h"
 
@@ -48,16 +49,15 @@ struct AVFilterGraph;
 class AudioEncoder;
 class CustomAVFrame;
 class Encoder;
-class PipeWireAudioSourceStream;
-struct PipeWireAudioFrame;
 class PipeWireReceiveEncodedThread;
 
-enum class AudioSource {
-    SystemAudio = 1 << 0,
-    Microphone = 1 << 1,
+/// An audio device that is mixed into the recorded audio track
+struct AudioSource {
+    PipeWireAudioSourceStream::Source source;
+    /// The node.name of the device, empty to follow the default device
+    QString nodeName;
 };
-Q_DECLARE_FLAGS(AudioSources, AudioSource)
-Q_DECLARE_OPERATORS_FOR_FLAGS(AudioSources)
+using AudioSources = QList<AudioSource>;
 
 class PipeWireProduce : public QObject
 {

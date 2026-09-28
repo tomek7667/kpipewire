@@ -29,11 +29,16 @@ class KPIPEWIRE_EXPORT PipeWireAudioSourceStream : public QObject
     Q_OBJECT
 public:
     enum class Source {
-        DefaultOutputMonitor, ///< Capture what is being played on the default output device
-        DefaultInput, ///< Capture the default input device, e.g. a microphone
+        OutputMonitor, ///< Capture what is being played on an output device
+        Input, ///< Capture an input device, e.g. a microphone
     };
 
-    explicit PipeWireAudioSourceStream(Source source, QObject *parent = nullptr);
+    /**
+     * @p targetNodeName is the node.name of the device to capture. If it is
+     * empty, the default device of the @p source kind is captured instead,
+     * following it when the default changes.
+     */
+    explicit PipeWireAudioSourceStream(Source source, const QString &targetNodeName = {}, QObject *parent = nullptr);
     ~PipeWireAudioSourceStream();
 
     bool createStream();

@@ -110,6 +110,36 @@ void PipeWireRecord::setRecordMicrophone(bool recordMicrophone)
     Q_EMIT recordMicrophoneChanged(recordMicrophone);
 }
 
+QStringList PipeWireRecord::recordedAudioSinks() const
+{
+    return d->m_recordedAudioSinks;
+}
+
+void PipeWireRecord::setRecordedAudioSinks(const QStringList &nodeNames)
+{
+    if (d->m_recordedAudioSinks == nodeNames) {
+        return;
+    }
+
+    d->m_recordedAudioSinks = nodeNames;
+    Q_EMIT recordedAudioSinksChanged(nodeNames);
+}
+
+QStringList PipeWireRecord::recordedAudioSources() const
+{
+    return d->m_recordedAudioSources;
+}
+
+void PipeWireRecord::setRecordedAudioSources(const QStringList &nodeNames)
+{
+    if (d->m_recordedAudioSources == nodeNames) {
+        return;
+    }
+
+    d->m_recordedAudioSources = nodeNames;
+    Q_EMIT recordedAudioSourcesChanged(nodeNames);
+}
+
 QString PipeWireRecord::extension() const
 {
     static QHash<PipeWireBaseEncodedStream::Encoder, QString> s_extensions = {
@@ -170,7 +200,7 @@ bool PipeWireRecordProduce::setupFormat()
         return false;
     }
 
-    if (m_audioSources) {
+    if (!m_audioSources.isEmpty()) {
         if (!m_encoder->supportsAudio() || m_avFormatContext->oformat->audio_codec == AV_CODEC_ID_NONE) {
             qCWarning(PIPEWIRERECORD_LOGGING) << "Audio recording is not supported for this format, ignoring";
         } else {
@@ -182,8 +212,7 @@ bool PipeWireRecordProduce::setupFormat()
             }
             audioEncoder->setQuality(m_quality);
 
-            const int inputCount = m_audioSources.testFlag(AudioSource::SystemAudio) + m_audioSources.testFlag(AudioSource::Microphone);
-            if (!audioEncoder->initialize(inputCount, m_avFormatContext->oformat->flags & AVFMT_GLOBALHEADER)) {
+            if (!audioEncoder->initialize(int(m_audioSources.size()), m_avFormatContext->oformat->flags & AVFMT_GLOBALHEADER)) {
                 qCWarning(PIPEWIRERECORD_LOGGING) << "Could not initialize the audio encoder, recording without audio";
             } else {
                 // Copy the codec parameters into a temporary first: once a
@@ -279,9 +308,24 @@ void PipeWireRecordProduce::processAudioPacket(AVPacket *packet)
 
 std::unique_ptr<PipeWireProduce> PipeWireRecord::makeProduce()
 {
+    using Source = PipeWireAudioSourceStream::Source;
     AudioSources audioSources;
-    audioSources.setFlag(AudioSource::SystemAudio, d->m_recordSystemAudio);
-    audioSources.setFlag(AudioSource::Microphone, d->m_recordMicrophone);
+    if (d->m_recordSystemAudio) {
+        audioSources.append({Source::OutputMonitor, {}});
+    }
+    if (d->m_recordMicrophone) {
+        audioSources.append({Source::Input, {}});
+    }
+    const auto appendDevices = [&audioSources](QStringList nodeNames, Source source) {
+        // Capturing the same device twice would just double its volume in the mix
+        nodeNames.removeDuplicates();
+        nodeNames.removeAll(QString());
+        for (const QString &nodeName : std::as_const(nodeNames)) {
+            audioSources.append({source, nodeName});
+        }
+    };
+    appendDevices(d->m_recordedAudioSinks, Source::OutputMonitor);
+    appendDevices(d->m_recordedAudioSources, Source::Input);
     return std::make_unique<PipeWireRecordProduce>(encoder(), nodeId(), objectSerial(), fd(), maxFramerate(), d->m_output, audioSources);
 }
 

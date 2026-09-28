@@ -7,6 +7,7 @@
 #pragma once
 
 #include <QObject>
+#include <QStringList>
 #include <qqmlintegration.h>
 
 #include "pipewirebaseencodedstream.h"
@@ -22,6 +23,8 @@ class KPIPEWIRE_EXPORT PipeWireRecord : public PipeWireBaseEncodedStream
     Q_PROPERTY(QString extension READ extension NOTIFY encoderChanged)
     Q_PROPERTY(bool recordSystemAudio READ recordSystemAudio WRITE setRecordSystemAudio NOTIFY recordSystemAudioChanged)
     Q_PROPERTY(bool recordMicrophone READ recordMicrophone WRITE setRecordMicrophone NOTIFY recordMicrophoneChanged)
+    Q_PROPERTY(QStringList recordedAudioSinks READ recordedAudioSinks WRITE setRecordedAudioSinks NOTIFY recordedAudioSinksChanged)
+    Q_PROPERTY(QStringList recordedAudioSources READ recordedAudioSources WRITE setRecordedAudioSources NOTIFY recordedAudioSourcesChanged)
 public:
     PipeWireRecord(QObject *parent = nullptr);
     ~PipeWireRecord() override;
@@ -37,6 +40,30 @@ public:
     bool recordMicrophone() const;
     void setRecordMicrophone(bool recordMicrophone);
 
+    /**
+     * Audio output devices whose playback is also recorded, identified by the
+     * node.name of their PipeWire Audio/Sink node.
+     *
+     * Unlike recordSystemAudio, these stay on the given device even when the
+     * default output changes. A device that is missing is recorded as silence
+     * until it appears, rather than falling back to another device.
+     * All recorded audio is mixed into a single track.
+     */
+    QStringList recordedAudioSinks() const;
+    void setRecordedAudioSinks(const QStringList &nodeNames);
+
+    /**
+     * Audio input devices that are also recorded, identified by the node.name
+     * of their PipeWire Audio/Source node.
+     *
+     * Unlike recordMicrophone, these stay on the given device even when the
+     * default input changes. A device that is missing is recorded as silence
+     * until it appears, rather than falling back to another device.
+     * All recorded audio is mixed into a single track.
+     */
+    QStringList recordedAudioSources() const;
+    void setRecordedAudioSources(const QStringList &nodeNames);
+
     // Only for compatibility with 5.27
     KPIPEWIRE_DEPRECATED QString currentExtension() const
     {
@@ -47,6 +74,8 @@ Q_SIGNALS:
     void outputChanged(const QString &output);
     void recordSystemAudioChanged(bool recordSystemAudio);
     void recordMicrophoneChanged(bool recordMicrophone);
+    void recordedAudioSinksChanged(const QStringList &nodeNames);
+    void recordedAudioSourcesChanged(const QStringList &nodeNames);
 
 private:
     std::unique_ptr<PipeWireProduce> makeProduce() override;

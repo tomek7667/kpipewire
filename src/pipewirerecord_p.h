@@ -44,4 +44,6 @@ struct PipeWireRecordPrivate {
     QString m_output;
     bool m_recordSystemAudio = false;
     bool m_recordMicrophone = false;
+    QStringList m_recordedAudioSinks;
+    QStringList m_recordedAudioSources;
 };

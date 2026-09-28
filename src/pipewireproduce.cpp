@@ -353,19 +353,12 @@ void PipeWireProduce::stopThreads()
 
 void PipeWireProduce::initializeAudioStreams()
 {
-    std::vector<PipeWireAudioSourceStream::Source> sources;
-    if (m_audioSources.testFlag(AudioSource::SystemAudio)) {
-        sources.push_back(PipeWireAudioSourceStream::Source::DefaultOutputMonitor);
-    }
-    if (m_audioSources.testFlag(AudioSource::Microphone)) {
-        sources.push_back(PipeWireAudioSourceStream::Source::DefaultInput);
-    }
+    m_audioInputStates.resize(m_audioSources.size());
 
-    m_audioInputStates.resize(sources.size());
-
-    for (size_t i = 0; i < sources.size(); ++i) {
+    for (qsizetype i = 0; i < m_audioSources.size(); ++i) {
         const int input = int(i);
-        auto stream = std::make_unique<PipeWireAudioSourceStream>(sources.at(i));
+        const AudioSource &source = m_audioSources.at(i);
+        auto stream = std::make_unique<PipeWireAudioSourceStream>(source.source, source.nodeName);
         connect(
             stream.get(),
             &PipeWireAudioSourceStream::framesReceived,
